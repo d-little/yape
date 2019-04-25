@@ -27,17 +27,18 @@ def getVersion():
     pass
     return v
 
-
-def read_config(cfgfile, config):
-    if cfgfile is None:
-        cfgfile = os.path.join(Path.home(), ".yape.yml")
-    if os.path.isfile(cfgfile):
-        with open(cfgfile, "r") as ymlfile:
+def read_config(yamlfile=None, config=None) -> {}:
+    ''' Returns an updated config from provided yaml file '''
+    if yamlfile is None:
+        yamlfile = Path(Path.home() / "yape.yml")
+    if yamlfile.is_file():
+        with open(yamlfile, "r") as ymlfile:
             cfg = yaml.load(ymlfile)
             logging.debug(cfg)
-            return {**config, **cfg}
+            config = config.update(cfg)
+    else:
+        logging.debug('No additional yaml configuration found.')
     return config
-
 
 def fileout(db, config, section):
     fileprefix = config["fileprefix"]
@@ -47,7 +48,8 @@ def fileout(db, config, section):
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [section])
     if len(c.fetchall()) == 0:
         return None
-    file = os.path.join(basefilename, fileprefix + section + ".csv")
+    #file = os.path.join(basefilename, fileprefix + section + ".csv")
+    file = Path(basefilename, fileprefix + section + ".csv")
     print("exporting " + section + " to " + file)
     c.execute('select * from "' + section + '"')
     columns = [i[0] for i in c.description]
@@ -58,15 +60,15 @@ def fileout(db, config, section):
         csvWriter.writerows(c)
 
 
-def ensure_dir(file_path):
-    directory = os.path.dirname(file_path)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+def ensure_dir(file_path: Path):
+    directory = file_path.Parent
+    if not directory.exists():
+        directory.mkdir(parents=True, exist_ok=True)
 
 
 def fileout_splitcols(db, config, section, split_on):
     fileprefix = config["fileprefix"]
-    basefilename = config["basefilename"]
+    basefilename = Path(config["basefilename"])
     c = db.cursor()
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [section])
     if len(c.fetchall()) == 0:
@@ -77,9 +79,8 @@ def fileout_splitcols(db, config, section, split_on):
         c.execute(
             'select * from "' + section + '" where ' + split_on + "=?", [column[0]]
         )
-        file = os.path.join(
-            basefilename, fileprefix + section + "." + column[0] + ".csv"
-        )
+        file = Path(basefilename / fileprefix / section)
+        file = file.with_suffix(column[0] + ".csv")
         print("exporting " + section + "-" + column[0] + " to " + file)
         columns = [i[0] for i in c.description]
         with open(file, "w") as f:
