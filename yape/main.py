@@ -1,5 +1,3 @@
-# os methods for manipulating paths
-import os
 import argparse
 
 import sys
@@ -27,7 +25,7 @@ def getVersion():
     pass
     return v
 
-def read_config(yamlfile=None, config=None) -> {}:
+def read_config(yamlfile:Path=None, config:set=None) -> set:
     ''' Returns an updated config from provided yaml file '''
     if yamlfile is None:
         yamlfile = Path(Path.home() / "yape.yml")
@@ -40,15 +38,13 @@ def read_config(yamlfile=None, config=None) -> {}:
         logging.debug('No additional yaml configuration found.')
     return config
 
-def fileout(db, config, section):
+def fileout(db, config:{}, section) -> None:
     fileprefix = config["fileprefix"]
     basefilename = config["basefilename"]
-
     c = db.cursor()
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [section])
     if len(c.fetchall()) == 0:
         return None
-    #file = os.path.join(basefilename, fileprefix + section + ".csv")
     file = Path(basefilename, fileprefix + section + ".csv")
     print("exporting " + section + " to " + file)
     c.execute('select * from "' + section + '"')
@@ -58,15 +54,16 @@ def fileout(db, config, section):
         csvWriter = csv.writer(f)
         csvWriter.writerow(columns)
         csvWriter.writerows(c)
+    return None
 
 
-def ensure_dir(file_path: Path):
-    directory = file_path.Parent
-    if not directory.exists():
-        directory.mkdir(parents=True, exist_ok=True)
+def ensure_dir(file_path: Path) -> None:
+    ''' Ensures that the full file structure of the incoming file_path exists. If it does not, it is created. '''
+    directory = file_path.parent
+    #There's not really a need to check if it exists, just try create it.
+    directory.mkdir(parents=True, exist_ok=True)
 
-
-def fileout_splitcols(db, config, section, split_on):
+def fileout_splitcols(db, config:{}, section, split_on) -> None:
     fileprefix = config["fileprefix"]
     basefilename = Path(config["basefilename"])
     c = db.cursor()
@@ -99,9 +96,14 @@ def parse_args(args):
         action="version",
         version="%(prog)s " + getVersion(),
     )
-    parser.add_argument("pButtons_file_name", help="path to pButtons file to use")
+    parser.add_argument(
+        "pButtons_file_name", 
+        type=Path,
+        help="path to pButtons file to use"
+    )
     parser.add_argument(
         "--filedb",
+        type=Path,
         help="use specific file as DB, useful to be able to used afterwards or as standalone datasource.",
     )
     parser.add_argument(
@@ -170,6 +172,7 @@ def parse_args(args):
         "-o",
         "--out",
         dest="out",
+        type=Path,
         help="specify base output directory, defaulting to <pbuttons_name>/",
     )
     parser.add_argument(
@@ -179,6 +182,45 @@ def parse_args(args):
     )
     return parser.parse_args(args)
 
+def is_compressed(file: Path) -> bool:
+    ''' Return True if file is a supported compressed file, else False '''
+    # I would like to replace this with python_magic in the future, check the magic number instead.
+    valid_suffix = [ '.zip', '.gz' ]
+    filetype = file.suffix
+    if filetype not in set(valid_suffix):
+        # Not compressed, but exists
+        return False
+    return True
+
+def decompress(compressedfile:Path, destination:Path) -> bool:
+    ''' Decompresses the given compressedfile and stores files in destination. 
+    Returns True if file successfully decompressed, else False
+    eg: 
+      - /path/to/pbuttons.zip returns: /temporary/path/pbuttons.html
+      - c:\\mydir\\pbuttons.html.gz returns: c:\\temporary\\path\\pbuttons.html
+      - c:\\mydir\\uncompressed_pbuttons.html returns c:\\mydir\\uncompressed_pbuttons.html
+    '''
+    try:
+        if not compressedfile.exists:
+            raise ValueError("Passed compressedfile does not exist: {}", compressedfile)
+        filetype = compressedfile.suffix
+        if filetype == '.zip':
+            with open(compressedfile, "rb") as f:
+                zf = zipfile.ZipFile(f)
+                zf.extractall(destination)
+        elif filetype == '.gz':
+            import gzip ## move to top of script, here for now for testing
+            import shutil ## ^^^
+            # We dont want to uncompress the pbuttons in memory, stream it out.
+            # https://codereview.stackexchange.com/questions/156005/improving-gzip-function-for-huge-files
+            tgtpath = destination / Path(compressedfile.stem)
+            with gzip.open(compressedfile, 'rb') as f_in, open(tgtpath, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        else:
+            raise Exception('Unhandled compressed filetype.  This should not occur.')
+    except OSError as e:
+        sys.exit("Could not process compressed pButtons file because: {}".format(str(e)))
+    return True
 
 def yape2(args=None):
     if args == None:
@@ -211,38 +253,28 @@ def yape2(args=None):
             fileprefix = ""
 
         if not args.skipparse:
-            # it's unrealistic to assume we wil have enough memory to hold the extracted pbuttons file
-            # so we extract it to a temp directory and extract it there
-            if args.pButtons_file_name.split(".")[-1] == "zip":
-
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    dest = tmpdir + os.sep
-                    ensure_dir(tmpdir + os.sep)
-                    with open(args.pButtons_file_name, "rb") as f:
-                        zf = zipfile.ZipFile(f)
-                        zf.extractall(dest)
-                        logging.debug("using temp directory:" + dest)
-                        temppbfile = None
-                        for root, dirs, files in os.walk(dest):
-                            for file_ in files:
-                                # this will only grab the first html file in the zipfile
-                                # we assume for now people are not evil in what they pass in ....
-                                if "html" in file_:
-                                    temppbfile = os.path.join(root, file_)
-                                    continue
-                        if temppbfile is not None:
-                            parsepbuttons(temppbfile, db)
-                        else:
-                            logging.error(
-                                "passed in zipfile with no included pbuttons html file"
-                            )
-                            exit(1)
-            parsepbuttons(args.pButtons_file_name, db)
+            pButtons_file = args.pButtons_file_name
+            if is_compressed(pButtons_file):
+                # If the file is compressed, it's unrealistic to assume we wil have enough memory to
+                #  hold the extracted pbuttons file. So we extract it to a temp directory and work on it there
+                with tempfile.TemporaryDirectory(prefix="yape_") as dest:
+                    destination = Path(dest)
+                    decompress(pButtons_file, destination)
+                    # Find the HTML file in destination
+                    htmlfiles = list(destination.rglob("*.html"))
+                    # We could check len(htmlfiles) here, if it's > 1, we've extracted more than 1 html file.
+                    # For now, just use the first one in the list
+                    htmlfile = htmlfiles[0]
+                    parsepbuttons(htmlfile, db)
+            elif pButtons_file.suffix == ".html":
+                parsepbuttons(pButtons_file, db)
+            else:
+                raise Exception('Unhandled compressed filetype.  This should not occur.')
 
         if args.out is not None:
             basefilename = args.out
         else:
-            basefilename = args.pButtons_file_name.split(".")[0]
+            basefilename = args.pButtons_file_name.name
 
         if args.plotDisks is not None:
             plotDisks = args.plotDisks
@@ -265,7 +297,7 @@ def yape2(args=None):
         config["basefilename"] = basefilename
 
         if args.csv:
-            ensure_dir(basefilename + os.sep)
+            ensure_dir(basefilename)
             fileout(db, config, "mgstat")
             fileout(db, config, "vmstat")
             fileout_splitcols(db, config, "iostat", "Device")
@@ -275,31 +307,31 @@ def yape2(args=None):
 
         # plotting
         if args.graphsard or args.all:
-            ensure_dir(basefilename + os.sep)
+            ensure_dir(basefilename)
             sard(db, config)
 
         if args.graphsaru or args.all:
-            ensure_dir(basefilename + os.sep)
+            ensure_dir(basefilename)
             saru(db, config)
 
         if args.graphmgstat or args.all:
-            ensure_dir(basefilename + os.sep)
+            ensure_dir(basefilename)
             mgstat(db, config)
 
         if args.graphvmstat or args.all:
-            ensure_dir(basefilename + os.sep)
+            ensure_dir(basefilename)
             vmstat(db, config)
 
         if args.monitor_disk or args.all:
-            ensure_dir(basefilename + os.sep)
+            ensure_dir(basefilename)
             monitor_disk(db, config)
 
         if args.graphiostat or args.all:
-            ensure_dir(basefilename + os.sep)
+            ensure_dir(basefilename)
             iostat(db, config)
 
         if args.graphperfmon or args.all:
-            ensure_dir(basefilename + os.sep)
+            ensure_dir(basefilename)
             perfmon(db, config)
 
     except OSError as e:
