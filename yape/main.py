@@ -185,6 +185,7 @@ def parse_args(args):
 def is_compressed(file: Path) -> bool:
     ''' Return True if file is a supported compressed file, else False '''
     # I would like to replace this with python_magic in the future, check the magic number instead.
+    # But I would also like to use the base libraries... what to do, what to do
     valid_suffix = [ '.zip', '.gz' ]
     filetype = file.suffix
     if filetype not in set(valid_suffix):

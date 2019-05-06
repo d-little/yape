@@ -16,8 +16,8 @@ class TestParser:
     def test_args_parse(self):
         params = ["--filedb", "some.db", "some.html"]
         args = parse_args(params)
-        assert args.filedb == "some.db"
-        assert args.pButtons_file_name == "some.html"
+        assert args.filedb == Path("some.db")
+        assert args.pButtons_file_name == Path("some.html")
         params = ["-q", "-a", "some.html"]
         args = parse_args(params)
         assert args.quiet

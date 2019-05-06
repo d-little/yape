@@ -3,6 +3,10 @@ import pandas as pd
 
 import sqlite3
 import logging
+logging.basicConfig(
+    format='%(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+    level=logging.DEBUG
+)
 import sys
 
 
@@ -268,6 +272,10 @@ def parsepbuttons(file, db):
                 if "Ubuntu Server LTS" in line:
                     osmode = "ubuntu"
                     continue
+                if "IBM AIX" in line:
+                    osmode = "aix"
+                    continue
+            
             matched = False
             for c in conditions:
                 if c["match"] in line:
@@ -313,12 +321,7 @@ def parsepbuttons(file, db):
                 logging.debug("starting " + mode)
                 if "beg_vmstat" not in line:
                     continue
-                if (
-                    osmode == "sunos"
-                    or osmode == "solsparc"
-                    or osmode == "hpux"
-                    or osmode == "ubuntu"
-                ):
+                if osmode in [ 'sunos', 'solsparc', 'hpux', 'ubuntu', 'aix' ]:
                     colnames = line.split("<pre>")[1].split()
                     colnames = list(map(lambda x: x.strip(), colnames))
                     numcols = len(colnames)
@@ -338,6 +341,8 @@ def parsepbuttons(file, db):
                     insertquery = insertquery[:-1]
                     query += ")"
                     insertquery += ")"
+                    logging.debug('query:' + query)
+                    logging.debug('insertquery:'+insertquery)
                 else:
                     # ugh :/
                     logging.debug(line)
@@ -369,8 +374,10 @@ def parsepbuttons(file, db):
                 if "SunOS" in line:
                     osmode = "sunos"
                     sardate = line.split()[-1]
+
                 if "HP-UX" in line:
                     sardate = line.split()[-1]
+                sardate = line.split()[-1]
                 insertquery = ""
                 mode = "sar-u"
                 logging.debug("starting " + mode)
@@ -624,6 +631,13 @@ def parsepbuttons(file, db):
                     db.commit()
                     logging.debug(str(count) + ".")
             if mode == "sar-u":
+                logging.debug('Entered mode == "sar-u"')
+                print(line[-1])
+                if 'System configuration' in line:
+                    continue
+                if "AIX" in line:
+                    sardate = line.split()[-1]
+                    continue
                 if "Linux" in line:
                     sardate = line.split()[3]
                     continue
@@ -633,7 +647,7 @@ def parsepbuttons(file, db):
                     continue
                 if "Average" in line:
                     continue
-                if "%usr" in line and (osmode == "sunos" or osmode == "hpux"):
+                if "%usr" in line and osmode in [ "sunos", "hpux", 'AIX' ]:
                     cols = list(map(lambda x: x.strip(), line.split()[1:]))
                     numcols = len(cols) + 1
                     query = 'CREATE TABLE IF NOT EXISTS "sar-u"("datetime" TEXT,'
@@ -676,6 +690,9 @@ def parsepbuttons(file, db):
                         cols = [(sardate + " " + cols[0])] + cols[1:]
                     else:
                         cols = [(sardate + " " + cols[0] + " " + cols[1])] + cols[2:]
+                        print(insertquery)
+                        print(cols)
+                        print(sardate)
                         cursor.execute(insertquery, cols)
                         count += 1
                 if count % 10000 == 0:
