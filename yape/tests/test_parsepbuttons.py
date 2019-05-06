@@ -1,12 +1,12 @@
 from yape.main import fileout, fileout_splitcols, parse_args, yape2
 from yape.parsepbuttons import parsepbuttons
 
-import os
+from pathlib import Path
 import traceback
 import logging
 
-TEST_DIR = "testdata"
-TEST_RESULTS = "testresults"
+TEST_DIR = Path("testdata")
+TEST_RESULTS = Path("testresults")
 # just to understand how tests work
 class TestParser:
     def test_is_string(self):
@@ -41,21 +41,19 @@ class TestParser:
 
     # pretty much a full stack test of parsing and plotting for all pbuttons in the testdata dir
     def test_db_parse(self):
-        onlyfiles = [
-            os.path.join(TEST_DIR, f)
-            for f in os.listdir(TEST_DIR)
-            if os.path.isfile(os.path.join(TEST_DIR, f))
-        ]
-        testingcfg = os.path.join(TEST_DIR, "config.test.yml")
-        for file in onlyfiles:
-            if "html" not in file:
-                continue
+        testingcfg = TEST_DIR / "config.test.yml"
+        #onlyfiles = [ x for x in TEST_DIR.iterdir() if x.is_file() ]
+        #for file in onlyfiles:
+        for file in TEST_DIR.glob('**/*.html'):
+            logging.debug("Working on file:" + file)
+            #if not file.suffix == "html":
+            #    continue
             logging.debug(file)
-            basename = os.path.basename(file)
-            db_file = os.path.join(TEST_RESULTS, basename + ".db")
+            basename = file.name
+            db_file = basename.with_suffix('.db')
             params = [
                 "-o",
-                os.path.join(TEST_RESULTS, basename),
+                TEST_RESULTS / basename,
                 "-a",
                 "--config",
                 testingcfg,
@@ -71,3 +69,4 @@ class TestParser:
                 logging.debug("error while parsing:" + file)
                 logging.debug(traceback.format_exc())
                 assert False, "exception while parsing: " + file
+

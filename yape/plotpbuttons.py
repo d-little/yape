@@ -21,7 +21,7 @@ from matplotlib.ticker import ScalarFormatter
 from matplotlib.ticker import AutoMinorLocator
 import pytz
 import re
-import os
+from pathlib import Path
 import mpl_toolkits.mplot3d
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -201,28 +201,28 @@ def plot_subset_split(db, config, subsetname, split_on):
             data = data.drop([split_on], axis=1)
             for key in data.columns.values:
                 if timeframe is not None:
-                    file = os.path.join(
-                        basename,
-                        fileprefix
-                        + subsetname
-                        + "."
-                        + column[0]
-                        + "."
-                        + key.replace("/", "_")
-                        + "."
-                        + timeframe
-                        + ".png",
+                    file = Path(
+                        basename /
+                        fileprefix /
+                        subsetname /
+                        "." /
+                        column[0] /
+                        "." /
+                        key.replace("/", "_") /
+                        "." /
+                        timeframe /
+                        ".png"
                     )
                 else:
-                    file = os.path.join(
-                        basename,
-                        fileprefix
-                        + subsetname
-                        + "."
-                        + column[0]
-                        + "."
-                        + key.replace("/", "_")
-                        + ".png",
+                    file = Path(
+                        basename /
+                        fileprefix /
+                        subsetname /
+                        "." /
+                        column[0] /
+                        "." /
+                        key.replace("/", "_") /
+                        ".png"
                     )
                 dispatch_plot(data, key, file, config)
 
@@ -255,26 +255,25 @@ def plot_subset(db, config, subsetname):
     for key in data.columns.values:     # key is the column name
 
         if timeframe is not None:
-            file = os.path.join(
-                basename,
-                fileprefix
-                + subsetname
-                + "."
-                + key.replace("\\", "_").replace("/", "_")
-                + "."
-                + timeframe
-                + ".png".replace("%", "_"),
+            file = Path(
+                basename /
+                fileprefix /
+                subsetname /
+                "." /
+                key.replace("\\", "_").replace("/", "_") /
+                "." /
+                timeframe /
+                ".png".replace("%", "_")
             )
         else:
-            file = os.path.join(
-                basename,
-                fileprefix
-                + subsetname
-                + "."
-                + key.replace("\\", "_").replace("/", "_")
-                + ".png".replace("%", "_"),
-            ) 
-     
+            file = Path(
+                basename /
+                fileprefix /
+                subsetname /
+                "." /
+                key.replace("\\", "_").replace("/", "_") /
+                ".png".replace("%", "_")
+            )
         dispatch_plot(data, key, file, config)
 
 
